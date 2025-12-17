@@ -105,7 +105,7 @@ def load_data(language):
 if "lang_choice" not in st.session_state:
     st.session_state.lang_choice = "English"
 
-# Define Text Variables based on CURRENT state
+# --- TRANSLATION VARIABLES ---
 if st.session_state.lang_choice == "English":
     t_header = "CATALOGUE OF TIMES"
     t_label = "LANGUAGE"
@@ -133,13 +133,20 @@ with col_header_1:
     st.markdown(f"#### {t_header}")
 
 with col_header_2:
-    # --- STABLE RADIO BUTTON LOGIC ---
-    # We use 'key="lang_choice"' to lock the state.
-    # This automatically handles the "Double Click" issue AND the "Reset" issue.
+    # --- CALLBACK FUNCTION (THE FIX) ---
+    def update_language():
+        # This function runs immediately when the button is clicked
+        st.session_state.lang_choice = st.session_state.ui_lang_radio
+
+    # Calculate index to FORCE the button to stay where it should be
+    current_index = 0 if st.session_state.lang_choice == "English" else 1
+
     st.radio(
-        t_label, 
-        ["English", "Spanish"], 
-        key="lang_choice",  # <--- THIS KEY KEEPS IT STABLE
+        label=t_label,
+        options=["English", "Spanish"],
+        index=current_index,      # <--- Forces correct selection
+        key="ui_lang_radio",      # <--- Unique key for the widget
+        on_change=update_language,# <--- triggers the update immediately
         horizontal=True, 
         format_func=format_language_option
     )
@@ -147,7 +154,6 @@ with col_header_2:
 st.markdown("---")
 
 # --- 4. FILTERING LOGIC ---
-# Use the session_state directly for the data loader
 try:
     df, col_map = load_data(st.session_state.lang_choice)
     
@@ -168,7 +174,6 @@ try:
         st.session_state.garment_key = "All"
         st.session_state.pos_key = "All"
         st.session_state.op_key = "All"
-        # We deliberately DO NOT reset 'lang_choice' here
 
     def get_sorted_options(dataframe, col_key):
         return ["All"] + sorted([x for x in dataframe[col_key].unique() if x != ""])
