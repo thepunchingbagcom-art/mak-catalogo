@@ -5,7 +5,7 @@ import pandas as pd
 import os
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(page_title="MAK - CATALOGO DE TIEMPOS", layout="wide")
+st.set_page_config(page_title="MAK - CATALOGO", layout="wide")
 
 # --- 2. DATA LOADER ---
 @st.cache_data(ttl=60)
@@ -99,13 +99,36 @@ def load_data(language):
 
     return pd.DataFrame(extracted_data), col_map
 
-# --- 3. UI LAYOUT ---
+# --- 3. UI LAYOUT & TRANSLATIONS ---
+# Initialize session state for language if not exists to keep UI stable
+if "lang_choice" not in st.session_state:
+    st.session_state.lang_choice = "English"
+
+# Define Text based on current state (before rendering)
+if st.session_state.lang_choice == "English":
+    t_header = "CATALOGUE OF TIMES"
+    t_label = "LANGUAGE"
+    t_clear_btn = "🔄 Clear"
+    t_results_msg = "Results"
+    t_no_results = "No Results Found"
+else:
+    t_header = "CATALOGO DE TIEMPOS"
+    t_label = "IDIOMA"
+    t_clear_btn = "🔄 Limpiar"
+    t_results_msg = "Resultados"
+    t_no_results = "No se encontraron resultados"
+
 col_header_1, col_header_2 = st.columns([5, 1])
+
 with col_header_1:
     st.markdown("## **MAK**") 
-    st.markdown("#### CATALOGO DE TIEMPOS")
+    # DYNAMIC HEADER
+    st.markdown(f"#### {t_header}")
+
 with col_header_2:
-    language = st.radio("IDIOMA", ["English", "Spanish"], horizontal=True)
+    # DYNAMIC LABEL
+    # We use 'key' to sync with session_state automatically
+    language = st.radio(t_label, ["English", "Spanish"], horizontal=True, key="lang_choice")
 
 st.markdown("---")
 
@@ -135,7 +158,6 @@ try:
         return ["All"] + sorted([x for x in dataframe[col_key].unique() if x != ""])
 
     with st.container():
-        # UPDATED: Button is now the LAST column
         c1, c2, c3, c4, c_reset = st.columns([3, 3, 3, 3, 1])
 
         # 1. CATEGORY
@@ -178,12 +200,11 @@ try:
         else:
             final_df = df_step3
             
-        # 5. RESET BUTTON (RIGHT SIDE)
+        # 5. DYNAMIC RESET BUTTON
         with c_reset:
-            # These two lines push the button down to align with the inputs
             st.write("") 
             st.write("") 
-            st.button("🔄 Clear", on_click=reset_filters)
+            st.button(t_clear_btn, on_click=reset_filters)
 
     # --- 5. DISPLAY RESULTS ---
     st.divider()
@@ -197,9 +218,9 @@ try:
         cols_order = [lbl_garment, lbl_pos, lbl_op, lbl_mach, lbl_time, lbl_cat]
         
         st.dataframe(display_df[cols_order], use_container_width=True, hide_index=True)
-        st.caption(f"Results: {len(final_df)}")
+        st.caption(f"{t_results_msg}: {len(final_df)}")
     else:
-        st.info("No Results Found / No se encontraron resultados")
+        st.info(t_no_results)
 
 except Exception as e:
     st.error(f"An error occurred: {e}")
