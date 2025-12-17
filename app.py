@@ -7,7 +7,6 @@ import os
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="MAK - CATALOGO DE TIEMPOS", layout="wide")
 
-
 # --- 2. DATA LOADER ---
 @st.cache_data(ttl=60)
 def load_data(language):
@@ -38,11 +37,11 @@ def load_data(language):
     # --- CONNECT TO SHEET ---
     try:
         client = gspread.authorize(creds)
-
-        # UPDATED: Using the Key from your new URL
+        
+        # KEY for the new spreadsheet
         sheet_key = "1Hd-NGFEKJudVRcinsnN7G8LUrtWg6bdk9xACs0tm_kc"
-        sh = client.open_by_key(sheet_key)
-
+        sh = client.open_by_key(sheet_key) 
+        
     except Exception as e:
         st.error(f"❌ Connection Error: {e}")
         return pd.DataFrame(), {}
@@ -58,14 +57,14 @@ def load_data(language):
     # --- CONFIGURATION BASED ON LANGUAGE ---
     if language == "English":
         target_sheet_name = "English"
-        start_row_index = 2  # Start at Row 3 (Index 2)
+        start_row_index = 2 
         col_map = {
             1: "TYPE OF GARMENT", 2: "POSITION", 3: "OPERATION",
             4: "MACHINE", 5: "TIME (Secs)", 6: "CATEGORY"
         }
-    else:  # Spanish
+    else: # Spanish
         target_sheet_name = "Spanish"
-        start_row_index = 9  # Start at Row 10 (Index 9)
+        start_row_index = 9 
         col_map = {
             1: "TIPO DE PRENDA", 2: "POSICION", 3: "OPERACION",
             4: "MAQUINA", 5: "TIEMPo", 6: "CATIGORIA"
@@ -73,10 +72,9 @@ def load_data(language):
 
     # --- LOAD WORKSHEET ---
     worksheet = get_sheet_by_name(sh, target_sheet_name)
-
+    
     if worksheet is None:
-        st.error(
-            f"❌ Error: Could not find sheet named '{target_sheet_name}'. Available sheets: {[s.title for s in sh.worksheets()]}")
+        st.error(f"❌ Error: Could not find sheet named '{target_sheet_name}'. Available sheets: {[s.title for s in sh.worksheets()]}")
         return pd.DataFrame(), {}
 
     # --- READ DATA ---
@@ -104,7 +102,7 @@ def load_data(language):
 # --- 3. UI LAYOUT ---
 col_header_1, col_header_2 = st.columns([5, 1])
 with col_header_1:
-    st.markdown("## **MAK**")
+    st.markdown("## **MAK**") 
     st.markdown("#### CATALOGO DE TIEMPOS")
 with col_header_2:
     language = st.radio("IDIOMA", ["English", "Spanish"], horizontal=True)
@@ -114,7 +112,7 @@ st.markdown("---")
 # --- 4. FILTERING LOGIC ---
 try:
     df, col_map = load_data(language)
-
+    
     if df.empty:
         st.warning("No data found.")
         st.stop()
@@ -126,10 +124,8 @@ try:
     lbl_mach = col_map[4]
     lbl_time = col_map[5]
 
-
     def get_sorted_options(dataframe, col_key):
         return ["All"] + sorted([x for x in dataframe[col_key].unique() if x.strip() != ""])
-
 
     with st.container():
         c1, c2, c3, c4 = st.columns(4)
@@ -138,9 +134,10 @@ try:
         with c1:
             cat_opts = get_sorted_options(df, "CATEGORY")
             sel_cat = st.selectbox(lbl_cat, cat_opts)
-
+        
+        # FIX: Use exact match (==) instead of .str.contains()
         if sel_cat != "All":
-            df_step1 = df[df["CATEGORY"].str.contains(sel_cat, case=False, regex=False)]
+            df_step1 = df[df["CATEGORY"] == sel_cat]
         else:
             df_step1 = df
 
@@ -149,8 +146,9 @@ try:
             garment_opts = get_sorted_options(df_step1, "GARMENT")
             sel_garment = st.selectbox(lbl_garment, garment_opts)
 
+        # FIX: Use exact match (==)
         if sel_garment != "All":
-            df_step2 = df_step1[df_step1["GARMENT"].str.contains(sel_garment, case=False, regex=False)]
+            df_step2 = df_step1[df_step1["GARMENT"] == sel_garment]
         else:
             df_step2 = df_step1
 
@@ -159,8 +157,9 @@ try:
             pos_opts = get_sorted_options(df_step2, "POSITION")
             sel_pos = st.selectbox(lbl_pos, pos_opts)
 
+        # FIX: Use exact match (==)
         if sel_pos != "All":
-            df_step3 = df_step2[df_step2["POSITION"].str.contains(sel_pos, case=False, regex=False)]
+            df_step3 = df_step2[df_step2["POSITION"] == sel_pos]
         else:
             df_step3 = df_step2
 
@@ -169,22 +168,23 @@ try:
             op_opts = get_sorted_options(df_step3, "OPERATION")
             sel_op = st.selectbox(lbl_op, op_opts)
 
+        # FIX: Use exact match (==)
         if sel_op != "All":
-            final_df = df_step3[df_step3["OPERATION"].str.contains(sel_op, case=False, regex=False)]
+            final_df = df_step3[df_step3["OPERATION"] == sel_op]
         else:
             final_df = df_step3
 
     # --- 5. DISPLAY RESULTS ---
     st.divider()
-
+    
     if not final_df.empty:
         display_df = final_df.rename(columns={
             "GARMENT": lbl_garment, "POSITION": lbl_pos, "OPERATION": lbl_op,
             "MACHINE": lbl_mach, "TIME": lbl_time, "CATEGORY": lbl_cat
         })
-
+        
         cols_order = [lbl_garment, lbl_pos, lbl_op, lbl_mach, lbl_time, lbl_cat]
-
+        
         st.dataframe(display_df[cols_order], use_container_width=True, hide_index=True)
         st.caption(f"Results: {len(final_df)}")
     else:
