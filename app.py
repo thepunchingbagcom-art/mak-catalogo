@@ -101,7 +101,7 @@ def load_data(language):
 
 # --- 3. UI LAYOUT & TRANSLATIONS ---
 
-# Initialize session state
+# Initialize session state for language
 if "lang_choice" not in st.session_state:
     st.session_state.lang_choice = "English"
 
@@ -134,21 +134,15 @@ with col_header_1:
 
 with col_header_2:
     # --- STABLE RADIO BUTTON LOGIC ---
-    # We calculate the index manually to force the button to stay put
-    current_index = 0 if st.session_state.lang_choice == "English" else 1
-    
-    selected_lang = st.radio(
+    # We use 'key="lang_choice"' to lock the state.
+    # This automatically handles the "Double Click" issue AND the "Reset" issue.
+    st.radio(
         t_label, 
         ["English", "Spanish"], 
-        index=current_index,
+        key="lang_choice",  # <--- THIS KEY KEEPS IT STABLE
         horizontal=True, 
         format_func=format_language_option
     )
-
-    # Manual State Update: If the user clicked a new button, update and RERUN immediately.
-    if selected_lang != st.session_state.lang_choice:
-        st.session_state.lang_choice = selected_lang
-        st.rerun()
 
 st.markdown("---")
 
@@ -174,6 +168,7 @@ try:
         st.session_state.garment_key = "All"
         st.session_state.pos_key = "All"
         st.session_state.op_key = "All"
+        # We deliberately DO NOT reset 'lang_choice' here
 
     def get_sorted_options(dataframe, col_key):
         return ["All"] + sorted([x for x in dataframe[col_key].unique() if x != ""])
@@ -232,16 +227,4 @@ try:
     
     if not final_df.empty:
         display_df = final_df.rename(columns={
-            "GARMENT": lbl_garment, "POSITION": lbl_pos, "OPERATION": lbl_op,
-            "MACHINE": lbl_mach, "TIME": lbl_time, "CATEGORY": lbl_cat
-        })
-        
-        cols_order = [lbl_garment, lbl_pos, lbl_op, lbl_mach, lbl_time, lbl_cat]
-        
-        st.dataframe(display_df[cols_order], use_container_width=True, hide_index=True)
-        st.caption(f"{t_results_msg}: {len(final_df)}")
-    else:
-        st.info(t_no_results)
-
-except Exception as e:
-    st.error(f"An error occurred: {e}")
+            "GARMENT":
