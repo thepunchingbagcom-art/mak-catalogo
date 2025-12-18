@@ -158,7 +158,7 @@ with col_header_2:
 
 st.markdown("---")
 
-# --- 4. SMART CROSS-FILTERING LOGIC ---
+# --- 4. SMART FILTERING WITH AUTO-CORRECT ---
 try:
     df, col_map = load_data(st.session_state.lang_choice)
     
@@ -179,40 +179,52 @@ try:
         if "pos_key" in st.session_state: st.session_state.pos_key = "All"
         if "op_key" in st.session_state: st.session_state.op_key = "All"
 
-    # --- GET CURRENT SELECTIONS ---
-    # We use 'st.session_state.get' to safely retrieve values or default to 'All'
+    # --- 1. GET CURRENT SELECTIONS ---
     sel_cat = st.session_state.get("cat_key", "All")
     sel_garment = st.session_state.get("garment_key", "All")
     sel_pos = st.session_state.get("pos_key", "All")
     sel_op = st.session_state.get("op_key", "All")
 
-    # --- CREATE MASKS (FILTERS) ---
-    # These masks help us see "What data is available if I ignore ONE column?"
-    # This allows the dropdowns to be smart without locking each other out.
-    
+    # --- 2. DEFINE MASKS (Who filters who?) ---
     m_cat = (df["CATEGORY"] == sel_cat) if sel_cat != "All" else pd.Series([True] * len(df))
     m_garment = (df["GARMENT"] == sel_garment) if sel_garment != "All" else pd.Series([True] * len(df))
     m_pos = (df["POSITION"] == sel_pos) if sel_pos != "All" else pd.Series([True] * len(df))
     m_op = (df["OPERATION"] == sel_op) if sel_op != "All" else pd.Series([True] * len(df))
 
-    def get_smart_options(df_source, col_name, current_val):
-        opts = ["All"] + sorted([x for x in df_source[col_name].unique() if x != ""])
-        # CRITICAL FIX: Ensure the currently selected item is ALWAYS in the list
-        # This prevents Streamlit from crashing or resetting if the selection technically "disappears"
-        if current_val != "All" and current_val not in opts:
-            opts.append(current_val)
-        return opts
+    # --- 3. CALCULATE VALID OPTIONS ---
+    def get_valid_options(df_filtered, col_name):
+        return ["All"] + sorted([x for x in df_filtered[col_name].unique() if x != ""])
 
-    # --- CALCULATE VALID OPTIONS FOR EACH DROPDOWN ---
-    # Example: To get valid GARMENTS, we filter by the selected CATEGORY + POSITION + OPERATION
-    # We do NOT filter by Garment itself (so the dropdown shows other alternatives)
-    
-    avail_cat = get_smart_options(df[m_garment & m_pos & m_op], "CATEGORY", sel_cat)
-    avail_garment = get_smart_options(df[m_cat & m_pos & m_op], "GARMENT", sel_garment)
-    avail_pos = get_smart_options(df[m_cat & m_garment & m_op], "POSITION", sel_pos)
-    avail_op = get_smart_options(df[m_cat & m_garment & m_pos], "OPERATION", sel_op)
+    avail_cat = get_valid_options(df[m_garment & m_pos & m_op], "CATEGORY")
+    avail_garment = get_valid_options(df[m_cat & m_pos & m_op], "GARMENT")
+    avail_pos = get_valid_options(df[m_cat & m_garment & m_op], "POSITION")
+    avail_op = get_valid_options(df[m_cat & m_garment & m_pos], "OPERATION")
 
+    # --- 4. AUTO-CORRECT LOGIC (The Fix) ---
+    # If the user selected an option that is no longer valid, we RESET it to "All" immediately.
+    # We also update the 'mask' variable so the table displays correctly.
 
+    if sel_cat not in avail_cat:
+        st.session_state.cat_key = "All"
+        sel_cat = "All"
+        m_cat = pd.Series([True] * len(df)) # Reset mask
+
+    if sel_garment not in avail_garment:
+        st.session_state.garment_key = "All"
+        sel_garment = "All"
+        m_garment = pd.Series([True] * len(df)) # Reset mask
+
+    if sel_pos not in avail_pos:
+        st.session_state.pos_key = "All"
+        sel_pos = "All"
+        m_pos = pd.Series([True] * len(df)) # Reset mask
+
+    if sel_op not in avail_op:
+        st.session_state.op_key = "All"
+        sel_op = "All"
+        m_op = pd.Series([True] * len(df)) # Reset mask
+
+    # --- 5. RENDER WIDGETS ---
     with st.container():
         c1, c2, c3, c4, c_reset = st.columns([3, 3, 3, 3, 1])
 
@@ -229,25 +241,22 @@ try:
             st.write("") 
             st.button(t_clear_btn, on_click=reset_filters)
 
-    # --- APPLY FINAL FILTER (INTERSECTION OF ALL) ---
+    # --- 6. APPLY FINAL FILTER ---
     final_mask = m_cat & m_garment & m_pos & m_op
     final_df = df[final_mask]
 
-    # --- 5. PDF GENERATOR FUNCTION ---
+    # --- 7. PDF GENERATOR ---
     def create_pdf(dataframe, headers):
         pdf = FPDF(orientation='L', unit='mm', format='A4')
         pdf.add_page()
         
-        # --- LOGO & HEADER SECTION ---
         pdf.set_font("Arial", "B", 24)
         pdf.cell(0, 10, "MAK", ln=True, align="L")
         
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, t_header, ln=True, align="C")
-        
         pdf.ln(10)
 
-        # --- TABLE ---
         pdf.set_font("Arial", "B", 10)
         col_names = [headers[0], headers[1], headers[2], headers[3], headers[4], headers[5]]
         widths = [45, 45, 90, 30, 25, 40]
@@ -272,7 +281,7 @@ try:
             
         return pdf.output(dest='S').encode('latin-1')
 
-    # --- 6. DISPLAY RESULTS & DOWNLOADS ---
+    # --- 8. DISPLAY RESULTS & DOWNLOADS ---
     st.divider()
     
     if not final_df.empty:
@@ -291,7 +300,7 @@ try:
         col_btns, col_spacer = st.columns([2, 10])
         
         with col_btns:
-            # 1. CSV Button
+            # 1. CSV
             csv = display_df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label=f"📥 {t_download_csv}",
@@ -301,7 +310,7 @@ try:
                 use_container_width=True
             )
             
-            # 2. PDF Button (Stacked below)
+            # 2. PDF (Stacked)
             pdf_bytes = create_pdf(display_df, cols_order)
             st.download_button(
                 label=f"📄 {t_download_pdf}",
@@ -310,7 +319,6 @@ try:
                 mime='application/pdf',
                 use_container_width=True
             )
-
     else:
         st.info(t_no_results)
 
