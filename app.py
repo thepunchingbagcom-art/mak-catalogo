@@ -158,7 +158,7 @@ with col_header_2:
 
 st.markdown("---")
 
-# --- 4. STABLE FILTERING LOGIC ---
+# --- 4. ORDERED FILTERING (NO AUTO CLEANING) ---
 try:
     df, col_map = load_data(st.session_state.lang_choice)
     
@@ -179,49 +179,80 @@ try:
         if "pos_key" in st.session_state: st.session_state.pos_key = "All"
         if "op_key" in st.session_state: st.session_state.op_key = "All"
 
-    # --- 1. GET FULL STATIC LISTS ---
-    # We grab the options from the ENTIRE dataframe immediately.
-    # These lists NEVER change, so the dropdowns NEVER reset.
-    def get_static_options(df_source, col_name):
-        return ["All"] + sorted([x for x in df_source[col_name].unique() if x != ""])
+    # --- PERSISTENT OPTION BUILDER ---
+    # This function gets valid options, but FORCEFULLY adds the current selection
+    # back into the list if it's missing. This stops the "Reset".
+    def get_options_persistent(df_source, col_name, current_val_key):
+        # 1. Get naturally valid options
+        natural_opts = sorted([x for x in df_source[col_name].unique() if x != ""])
+        opts = ["All"] + natural_opts
+        
+        # 2. Check what is CURRENTLY selected in the session state
+        current_val = st.session_state.get(current_val_key, "All")
+        
+        # 3. If current selection exists and is NOT in the new list, add it back.
+        if current_val != "All" and current_val not in opts:
+            opts.append(current_val)
+            
+        return opts
 
-    all_cats = get_static_options(df, "CATEGORY")
-    all_garments = get_static_options(df, "GARMENT")
-    all_pos = get_static_options(df, "POSITION")
-    all_ops = get_static_options(df, "OPERATION")
-
-    # --- 2. RENDER WIDGETS ---
     with st.container():
         c1, c2, c3, c4, c_reset = st.columns([3, 3, 3, 3, 1])
 
-        # We pass the STATIC lists here.
+        # A. LEVEL 1: CATEGORY (Controls Garment)
         with c1:
-            sel_cat = st.selectbox(lbl_cat, all_cats, key="cat_key")
+            # Category is top level, so it just gets all unique values
+            cat_opts = ["All"] + sorted([x for x in df["CATEGORY"].unique() if x != ""])
+            sel_cat = st.selectbox(lbl_cat, cat_opts, key="cat_key")
+
+        # FILTER 1
+        if sel_cat != "All":
+            df_lvl1 = df[df["CATEGORY"] == sel_cat]
+        else:
+            df_lvl1 = df
+
+        # B. LEVEL 2: GARMENT (Controls Position)
+        # We use the PERSISTENT function so if you change Category, Garment stays put.
+        garment_opts = get_options_persistent(df_lvl1, "GARMENT", "garment_key")
+        
         with c2:
-            sel_garment = st.selectbox(lbl_garment, all_garments, key="garment_key")
+            sel_garment = st.selectbox(lbl_garment, garment_opts, key="garment_key")
+
+        # FILTER 2
+        if sel_garment != "All":
+            df_lvl2 = df_lvl1[df_lvl1["GARMENT"] == sel_garment]
+        else:
+            df_lvl2 = df_lvl1
+
+        # C. LEVEL 3: POSITION (Controls Operation)
+        pos_opts = get_options_persistent(df_lvl2, "POSITION", "pos_key")
+
         with c3:
-            sel_pos = st.selectbox(lbl_pos, all_pos, key="pos_key")
+            sel_pos = st.selectbox(lbl_pos, pos_opts, key="pos_key")
+
+        # FILTER 3
+        if sel_pos != "All":
+            df_lvl3 = df_lvl2[df_lvl2["POSITION"] == sel_pos]
+        else:
+            df_lvl3 = df_lvl2
+
+        # D. LEVEL 4: OPERATION (Final)
+        op_opts = get_options_persistent(df_lvl3, "OPERATION", "op_key")
+
         with c4:
-            sel_op = st.selectbox(lbl_op, all_ops, key="op_key")
+            sel_op = st.selectbox(lbl_op, op_opts, key="op_key")
+
+        # FILTER 4 (Final DataFrame)
+        if sel_op != "All":
+            final_df = df_lvl3[df_lvl3["OPERATION"] == sel_op]
+        else:
+            final_df = df_lvl3
+
+        # E. RESET BUTTON
         with c_reset:
             st.write("") 
             st.write("") 
             st.button(t_clear_btn, on_click=reset_filters)
-
-    # --- 3. APPLY FILTER (TABLE ONLY) ---
-    # The logic happens here. The dropdowns stay stable, but the table updates.
-    mask = pd.Series([True] * len(df))
-
-    if sel_cat != "All":
-        mask = mask & (df["CATEGORY"] == sel_cat)
-    if sel_garment != "All":
-        mask = mask & (df["GARMENT"] == sel_garment)
-    if sel_pos != "All":
-        mask = mask & (df["POSITION"] == sel_pos)
-    if sel_op != "All":
-        mask = mask & (df["OPERATION"] == sel_op)
-
-    final_df = df[mask]
 
     # --- 5. PDF GENERATOR ---
     def create_pdf(dataframe, headers):
