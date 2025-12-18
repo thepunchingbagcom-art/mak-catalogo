@@ -158,7 +158,7 @@ with col_header_2:
 
 st.markdown("---")
 
-# --- 4. FULLY INDEPENDENT FILTERING LOGIC ---
+# --- 4. SMART CROSS-FILTERING LOGIC ---
 try:
     df, col_map = load_data(st.session_state.lang_choice)
     
@@ -179,49 +179,59 @@ try:
         if "pos_key" in st.session_state: st.session_state.pos_key = "All"
         if "op_key" in st.session_state: st.session_state.op_key = "All"
 
-    # --- GET OPTIONS FROM FULL DATAFRAME (STATIC LISTS) ---
-    # This guarantees that the lists NEVER shrink, regardless of what you select.
-    # This is the "Nuclear Option" for solving order dependency.
-    
-    def get_static_options(df_source, col_name):
-        return ["All"] + sorted([x for x in df_source[col_name].unique() if x != ""])
+    # --- GET CURRENT SELECTIONS ---
+    # We use 'st.session_state.get' to safely retrieve values or default to 'All'
+    sel_cat = st.session_state.get("cat_key", "All")
+    sel_garment = st.session_state.get("garment_key", "All")
+    sel_pos = st.session_state.get("pos_key", "All")
+    sel_op = st.session_state.get("op_key", "All")
 
-    all_cats = get_static_options(df, "CATEGORY")
-    all_garments = get_static_options(df, "GARMENT")
-    all_positions = get_static_options(df, "POSITION")
-    all_ops = get_static_options(df, "OPERATION")
+    # --- CREATE MASKS (FILTERS) ---
+    # These masks help us see "What data is available if I ignore ONE column?"
+    # This allows the dropdowns to be smart without locking each other out.
+    
+    m_cat = (df["CATEGORY"] == sel_cat) if sel_cat != "All" else pd.Series([True] * len(df))
+    m_garment = (df["GARMENT"] == sel_garment) if sel_garment != "All" else pd.Series([True] * len(df))
+    m_pos = (df["POSITION"] == sel_pos) if sel_pos != "All" else pd.Series([True] * len(df))
+    m_op = (df["OPERATION"] == sel_op) if sel_op != "All" else pd.Series([True] * len(df))
+
+    def get_smart_options(df_source, col_name, current_val):
+        opts = ["All"] + sorted([x for x in df_source[col_name].unique() if x != ""])
+        # CRITICAL FIX: Ensure the currently selected item is ALWAYS in the list
+        # This prevents Streamlit from crashing or resetting if the selection technically "disappears"
+        if current_val != "All" and current_val not in opts:
+            opts.append(current_val)
+        return opts
+
+    # --- CALCULATE VALID OPTIONS FOR EACH DROPDOWN ---
+    # Example: To get valid GARMENTS, we filter by the selected CATEGORY + POSITION + OPERATION
+    # We do NOT filter by Garment itself (so the dropdown shows other alternatives)
+    
+    avail_cat = get_smart_options(df[m_garment & m_pos & m_op], "CATEGORY", sel_cat)
+    avail_garment = get_smart_options(df[m_cat & m_pos & m_op], "GARMENT", sel_garment)
+    avail_pos = get_smart_options(df[m_cat & m_garment & m_op], "POSITION", sel_pos)
+    avail_op = get_smart_options(df[m_cat & m_garment & m_pos], "OPERATION", sel_op)
+
 
     with st.container():
         c1, c2, c3, c4, c_reset = st.columns([3, 3, 3, 3, 1])
 
-        # Dropdowns use the FULL lists (all_cats, etc.)
         with c1:
-            sel_cat = st.selectbox(lbl_cat, all_cats, key="cat_key")
+            st.selectbox(lbl_cat, avail_cat, key="cat_key")
         with c2:
-            sel_garment = st.selectbox(lbl_garment, all_garments, key="garment_key")
+            st.selectbox(lbl_garment, avail_garment, key="garment_key")
         with c3:
-            sel_pos = st.selectbox(lbl_pos, all_positions, key="pos_key")
+            st.selectbox(lbl_pos, avail_pos, key="pos_key")
         with c4:
-            sel_op = st.selectbox(lbl_op, all_ops, key="op_key")
+            st.selectbox(lbl_op, avail_op, key="op_key")
         with c_reset:
             st.write("") 
             st.write("") 
             st.button(t_clear_btn, on_click=reset_filters)
 
-    # --- APPLY FILTER ONLY TO RESULTS ---
-    # The selection logic happens here, affecting only the Table, not the dropdowns.
-    mask = pd.Series([True] * len(df))
-
-    if sel_cat != "All":
-        mask = mask & (df["CATEGORY"] == sel_cat)
-    if sel_garment != "All":
-        mask = mask & (df["GARMENT"] == sel_garment)
-    if sel_pos != "All":
-        mask = mask & (df["POSITION"] == sel_pos)
-    if sel_op != "All":
-        mask = mask & (df["OPERATION"] == sel_op)
-
-    final_df = df[mask]
+    # --- APPLY FINAL FILTER (INTERSECTION OF ALL) ---
+    final_mask = m_cat & m_garment & m_pos & m_op
+    final_df = df[final_mask]
 
     # --- 5. PDF GENERATOR FUNCTION ---
     def create_pdf(dataframe, headers):
