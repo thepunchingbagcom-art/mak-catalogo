@@ -3,6 +3,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 import os
+from fpdf import FPDF
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="MAK - CATALOGO", layout="wide")
@@ -87,12 +88,12 @@ def load_data(language):
     for row in data_rows:
         if len(row) > 6:
             item = {
-                "GARMENT": row[1].strip(), 
-                "POSITION": row[2].strip(), 
-                "OPERATION": row[3].strip(),
-                "MACHINE": row[4].strip(), 
-                "TIME": row[5].strip(), 
-                "CATEGORY": row[6].strip()
+                "GARMENT": str(row[1]).strip(), 
+                "POSITION": str(row[2]).strip(), 
+                "OPERATION": str(row[3]).strip(),
+                "MACHINE": str(row[4]).strip(), 
+                "TIME": str(row[5]).strip(), 
+                "CATEGORY": str(row[6]).strip()
             }
             if item["GARMENT"] != "" or item["OPERATION"] != "":
                 extracted_data.append(item)
@@ -111,16 +112,20 @@ if st.session_state.lang_choice == "English":
     t_clear_btn = "🔄 Clear"
     t_results_msg = "Results"
     t_no_results = "No Results Found"
-    t_download_btn = "Download CSV"
-    t_filename = "results.csv"
+    t_download_csv = "Download CSV"
+    t_download_pdf = "Download PDF"
+    t_filename_csv = "results.csv"
+    t_filename_pdf = "spec_sheet.pdf"
 else:
     t_header = "CATALOGO DE TIEMPOS"
     t_label = "IDIOMA"
     t_clear_btn = "🔄 Limpiar"
     t_results_msg = "Resultados"
     t_no_results = "No se encontraron resultados"
-    t_download_btn = "Descargar CSV"
-    t_filename = "resultados.csv"
+    t_download_csv = "Descargar CSV"
+    t_download_pdf = "Descargar PDF"
+    t_filename_csv = "resultados.csv"
+    t_filename_pdf = "hoja_especificaciones.pdf"
 
 def format_language_option(option):
     if st.session_state.lang_choice == "Spanish":
@@ -153,7 +158,7 @@ with col_header_2:
 
 st.markdown("---")
 
-# --- 4. SMART FILTERING LOGIC ---
+# --- 4. STABLE FILTERING LOGIC ---
 try:
     df, col_map = load_data(st.session_state.lang_choice)
     
@@ -174,76 +179,124 @@ try:
         if "pos_key" in st.session_state: st.session_state.pos_key = "All"
         if "op_key" in st.session_state: st.session_state.op_key = "All"
 
-    sel_cat = st.session_state.get("cat_key", "All")
-    sel_garment = st.session_state.get("garment_key", "All")
-    sel_pos = st.session_state.get("pos_key", "All")
-    sel_op = st.session_state.get("op_key", "All")
+    # --- 1. GET FULL STATIC LISTS ---
+    # We grab the options from the ENTIRE dataframe immediately.
+    # These lists NEVER change, so the dropdowns NEVER reset.
+    def get_static_options(df_source, col_name):
+        return ["All"] + sorted([x for x in df_source[col_name].unique() if x != ""])
 
-    # Base Masks
-    m_cat = (df["CATEGORY"] == sel_cat) if sel_cat != "All" else pd.Series([True] * len(df))
-    m_garment = (df["GARMENT"] == sel_garment) if sel_garment != "All" else pd.Series([True] * len(df))
-    m_pos = (df["POSITION"] == sel_pos) if sel_pos != "All" else pd.Series([True] * len(df))
-    m_op = (df["OPERATION"] == sel_op) if sel_op != "All" else pd.Series([True] * len(df))
+    all_cats = get_static_options(df, "CATEGORY")
+    all_garments = get_static_options(df, "GARMENT")
+    all_pos = get_static_options(df, "POSITION")
+    all_ops = get_static_options(df, "OPERATION")
 
-    def get_smart_options(df_source, col_name, current_val):
-        opts = ["All"] + sorted([x for x in df_source[col_name].unique() if x != ""])
-        if current_val != "All" and current_val not in opts:
-            opts.append(current_val)
-        return opts
-
-    # Calculate Intersections
-    avail_cat = get_smart_options(df[m_garment & m_pos & m_op], "CATEGORY", sel_cat)
-    avail_garment = get_smart_options(df[m_cat & m_pos & m_op], "GARMENT", sel_garment)
-    avail_pos = get_smart_options(df[m_cat & m_garment & m_op], "POSITION", sel_pos)
-    avail_op = get_smart_options(df[m_cat & m_garment & m_pos], "OPERATION", sel_op)
-
+    # --- 2. RENDER WIDGETS ---
     with st.container():
         c1, c2, c3, c4, c_reset = st.columns([3, 3, 3, 3, 1])
 
+        # We pass the STATIC lists here.
         with c1:
-            st.selectbox(lbl_cat, avail_cat, key="cat_key")
+            sel_cat = st.selectbox(lbl_cat, all_cats, key="cat_key")
         with c2:
-            st.selectbox(lbl_garment, avail_garment, key="garment_key")
+            sel_garment = st.selectbox(lbl_garment, all_garments, key="garment_key")
         with c3:
-            st.selectbox(lbl_pos, avail_pos, key="pos_key")
+            sel_pos = st.selectbox(lbl_pos, all_pos, key="pos_key")
         with c4:
-            st.selectbox(lbl_op, avail_op, key="op_key")
+            sel_op = st.selectbox(lbl_op, all_ops, key="op_key")
         with c_reset:
             st.write("") 
             st.write("") 
             st.button(t_clear_btn, on_click=reset_filters)
 
-    # --- APPLY FINAL FILTER ---
-    final_mask = m_cat & m_garment & m_pos & m_op
-    final_df = df[final_mask]
+    # --- 3. APPLY FILTER (TABLE ONLY) ---
+    # The logic happens here. The dropdowns stay stable, but the table updates.
+    mask = pd.Series([True] * len(df))
 
-    # --- 5. DISPLAY RESULTS & DOWNLOAD ---
+    if sel_cat != "All":
+        mask = mask & (df["CATEGORY"] == sel_cat)
+    if sel_garment != "All":
+        mask = mask & (df["GARMENT"] == sel_garment)
+    if sel_pos != "All":
+        mask = mask & (df["POSITION"] == sel_pos)
+    if sel_op != "All":
+        mask = mask & (df["OPERATION"] == sel_op)
+
+    final_df = df[mask]
+
+    # --- 5. PDF GENERATOR ---
+    def create_pdf(dataframe, headers):
+        pdf = FPDF(orientation='L', unit='mm', format='A4')
+        pdf.add_page()
+        
+        pdf.set_font("Arial", "B", 24)
+        pdf.cell(0, 10, "MAK", ln=True, align="L")
+        
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(0, 10, t_header, ln=True, align="C")
+        pdf.ln(10)
+
+        pdf.set_font("Arial", "B", 10)
+        col_names = [headers[0], headers[1], headers[2], headers[3], headers[4], headers[5]]
+        widths = [45, 45, 90, 30, 25, 40]
+        
+        for i, h in enumerate(col_names):
+            txt = str(h).encode('latin-1', 'replace').decode('latin-1')
+            pdf.cell(widths[i], 10, txt, border=1, align='C', fill=False)
+        pdf.ln()
+
+        pdf.set_font("Arial", "", 9)
+        for _, row in dataframe.iterrows():
+            data = [
+                row[headers[0]], row[headers[1]], row[headers[2]], 
+                row[headers[3]], row[headers[4]], row[headers[5]]
+            ]
+            
+            max_height = 10
+            for i, d in enumerate(data):
+                txt = str(d).encode('latin-1', 'replace').decode('latin-1')
+                pdf.cell(widths[i], max_height, txt, border=1)
+            pdf.ln()
+            
+        return pdf.output(dest='S').encode('latin-1')
+
+    # --- 6. DISPLAY RESULTS & DOWNLOADS ---
     st.divider()
     
     if not final_df.empty:
-        # Rename columns for Display AND Download
         display_df = final_df.rename(columns={
             "GARMENT": lbl_garment, "POSITION": lbl_pos, "OPERATION": lbl_op,
             "MACHINE": lbl_mach, "TIME": lbl_time, "CATEGORY": lbl_cat
         })
         
         cols_order = [lbl_garment, lbl_pos, lbl_op, lbl_mach, lbl_time, lbl_cat]
-        display_df = display_df[cols_order] # Reorder columns
+        display_df = display_df[cols_order]
         
         st.dataframe(display_df, use_container_width=True, hide_index=True)
         st.caption(f"{t_results_msg}: {len(final_df)}")
 
-        # --- DOWNLOAD BUTTON ---
-        # Convert DF to CSV
-        csv = display_df.to_csv(index=False).encode('utf-8')
-
-        st.download_button(
-            label=f"📥 {t_download_btn}",
-            data=csv,
-            file_name=t_filename,
-            mime='text/csv',
-        )
-
+        # --- DOWNLOAD BUTTONS ---
+        col_btns, col_spacer = st.columns([2, 10])
+        
+        with col_btns:
+            # 1. CSV
+            csv = display_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label=f"📥 {t_download_csv}",
+                data=csv,
+                file_name=t_filename_csv,
+                mime='text/csv',
+                use_container_width=True
+            )
+            
+            # 2. PDF (Stacked)
+            pdf_bytes = create_pdf(display_df, cols_order)
+            st.download_button(
+                label=f"📄 {t_download_pdf}",
+                data=pdf_bytes,
+                file_name=t_filename_pdf,
+                mime='application/pdf',
+                use_container_width=True
+            )
     else:
         st.info(t_no_results)
 
