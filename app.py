@@ -280,28 +280,28 @@ try:
         st.caption(f"{t_results_msg}: {len(final_df)}")
 
         # --- DOWNLOAD BUTTONS ---
-        # This Ratio [2, 2, 15] forces the first two columns to be very narrow,
-        # which pulls the buttons close together.
-        col_d1, col_d2, col_spacer = st.columns([2, 2, 15])
+        # UPDATED: 1 Column (Buttons stacked vertically)
+        col_btns, col_spacer = st.columns([2, 10])
         
-        # 1. CSV
-        csv = display_df.to_csv(index=False).encode('utf-8')
-        with col_d1:
+        with col_btns:
+            # 1. CSV Button
+            csv = display_df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label=f"📥 {t_download_csv}",
                 data=csv,
                 file_name=t_filename_csv,
                 mime='text/csv',
+                use_container_width=True
             )
-
-        # 2. PDF
-        with col_d2:
+            
+            # 2. PDF Button (Stacked below)
             pdf_bytes = create_pdf(display_df, cols_order)
             st.download_button(
                 label=f"📄 {t_download_pdf}",
                 data=pdf_bytes,
                 file_name=t_filename_pdf,
                 mime='application/pdf',
+                use_container_width=True
             )
 
     else:
