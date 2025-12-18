@@ -144,18 +144,18 @@ with col_header_2:
     st.radio(
         label=t_label,
         options=["English", "Spanish"],
-        index=current_idx,         # Forces the button to visually match memory
-        key="ui_lang_radio",       # Unique ID for the widget
-        on_change=update_language, # Runs function when clicked
+        index=current_idx,         
+        key="ui_lang_radio",       
+        on_change=update_language, 
         horizontal=True, 
         format_func=format_language_option
     )
 
 st.markdown("---")
 
-# --- 4. FILTERING LOGIC ---
+# --- 4. INDEPENDENT FILTERING LOGIC ---
 try:
-    # Load data based on the PERSISTENT state
+    # Load data
     df, col_map = load_data(st.session_state.lang_choice)
     
     if df.empty:
@@ -169,65 +169,63 @@ try:
     lbl_mach = col_map[4]
     lbl_time = col_map[5]
 
-    # --- RESET CALLBACK (FIXED) ---
+    # --- RESET CALLBACK ---
     def reset_filters():
-        # Only reset the dropdown keys. Do NOT touch lang_choice or ui_lang_radio.
         if "cat_key" in st.session_state: st.session_state.cat_key = "All"
         if "garment_key" in st.session_state: st.session_state.garment_key = "All"
         if "pos_key" in st.session_state: st.session_state.pos_key = "All"
         if "op_key" in st.session_state: st.session_state.op_key = "All"
 
-    def get_sorted_options(dataframe, col_key):
-        return ["All"] + sorted([x for x in dataframe[col_key].unique() if x != ""])
+    # Helper: Gets options from the FULL dataframe (Independent)
+    def get_options(full_df, col_key):
+        return ["All"] + sorted([x for x in full_df[col_key].unique() if x != ""])
 
     with st.container():
         c1, c2, c3, c4, c_reset = st.columns([3, 3, 3, 3, 1])
 
-        # 1. CATEGORY
+        # 1. CATEGORY (Independent)
         with c1:
-            cat_opts = get_sorted_options(df, "CATEGORY")
+            cat_opts = get_options(df, "CATEGORY")
             sel_cat = st.selectbox(lbl_cat, cat_opts, key="cat_key")
-        
-        if sel_cat != "All":
-            df_step1 = df[df["CATEGORY"] == sel_cat]
-        else:
-            df_step1 = df
 
-        # 2. GARMENT
+        # 2. GARMENT (Independent - uses 'df', not 'df_step1')
         with c2:
-            garment_opts = get_sorted_options(df_step1, "GARMENT")
+            garment_opts = get_options(df, "GARMENT")
             sel_garment = st.selectbox(lbl_garment, garment_opts, key="garment_key")
 
-        if sel_garment != "All":
-            df_step2 = df_step1[df_step1["GARMENT"] == sel_garment]
-        else:
-            df_step2 = df_step1
-
-        # 3. POSITION
+        # 3. POSITION (Independent - uses 'df', not 'df_step2')
         with c3:
-            pos_opts = get_sorted_options(df_step2, "POSITION")
+            pos_opts = get_options(df, "POSITION")
             sel_pos = st.selectbox(lbl_pos, pos_opts, key="pos_key")
 
-        if sel_pos != "All":
-            df_step3 = df_step2[df_step2["POSITION"] == sel_pos]
-        else:
-            df_step3 = df_step2
-
-        # 4. OPERATION
+        # 4. OPERATION (Independent - uses 'df', not 'df_step3')
         with c4:
-            op_opts = get_sorted_options(df_step3, "OPERATION")
+            op_opts = get_options(df, "OPERATION")
             sel_op = st.selectbox(lbl_op, op_opts, key="op_key")
-
-        if sel_op != "All":
-            final_df = df_step3[df_step3["OPERATION"] == sel_op]
-        else:
-            final_df = df_step3
             
-        # 5. DYNAMIC RESET BUTTON
+        # 5. RESET BUTTON
         with c_reset:
             st.write("") 
             st.write("") 
             st.button(t_clear_btn, on_click=reset_filters)
+
+    # --- APPLY FILTERS (ALL AT ONCE) ---
+    # We start with the full list and narrow it down based on what is selected
+    mask = pd.Series([True] * len(df))
+
+    if sel_cat != "All":
+        mask = mask & (df["CATEGORY"] == sel_cat)
+    
+    if sel_garment != "All":
+        mask = mask & (df["GARMENT"] == sel_garment)
+
+    if sel_pos != "All":
+        mask = mask & (df["POSITION"] == sel_pos)
+
+    if sel_op != "All":
+        mask = mask & (df["OPERATION"] == sel_op)
+
+    final_df = df[mask]
 
     # --- 5. DISPLAY RESULTS ---
     st.divider()
@@ -247,4 +245,3 @@ try:
 
 except Exception as e:
     st.error(f"An error occurred: {e}")
-
