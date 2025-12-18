@@ -4,7 +4,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 import os
 from fpdf import FPDF
-import altair as alt # <--- NEW LIBRARY FOR CHARTS
+import altair as alt
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="MAK - CATALOGO", layout="wide")
@@ -61,9 +61,6 @@ def load_data(language):
             1: "TYPE OF GARMENT", 2: "POSITION", 3: "OPERATION",
             4: "MACHINE", 5: "TIME (Secs)", 6: "CATEGORY"
         }
-        t_chart_title = "Bottleneck Analysis (Slowest Operations)"
-        t_chart_x = "Time (Seconds)"
-        t_chart_y = "Operation"
     else: # Spanish
         target_sheet_name = "Spanish"
         start_row_index = 9 
@@ -71,9 +68,6 @@ def load_data(language):
             1: "TIPO DE PRENDA", 2: "POSICION", 3: "OPERACION",
             4: "MAQUINA", 5: "TIEMPo", 6: "CATIGORIA"
         }
-        t_chart_title = "Analisis de Cuello de Botella (Operaciones Mas Lentas)"
-        t_chart_x = "Tiempo (Segundos)"
-        t_chart_y = "Operacion"
 
     # --- LOAD WORKSHEET ---
     worksheet = get_sheet_by_name(sh, target_sheet_name)
@@ -123,6 +117,12 @@ if st.session_state.lang_choice == "English":
     t_download_pdf = "Download PDF"
     t_filename_csv = "results.csv"
     t_filename_pdf = "spec_sheet.pdf"
+    
+    # Chart Translations
+    t_chart_title = "Bottleneck Analysis (Slowest Operations)"
+    t_chart_x = "Time (Seconds)"
+    t_chart_y = "Operation"
+
 else:
     t_header = "CATALOGO DE TIEMPOS"
     t_label = "IDIOMA"
@@ -133,6 +133,11 @@ else:
     t_download_pdf = "Descargar PDF"
     t_filename_csv = "resultados.csv"
     t_filename_pdf = "hoja_especificaciones.pdf"
+    
+    # Chart Translations
+    t_chart_title = "Analisis de Cuello de Botella (Operaciones Mas Lentas)"
+    t_chart_x = "Tiempo (Segundos)"
+    t_chart_y = "Operacion"
 
 def format_language_option(option):
     if st.session_state.lang_choice == "Spanish":
@@ -312,7 +317,7 @@ try:
                 y=alt.Y('OPERATION', sort='-x', title=t_chart_y, axis=alt.Axis(labels=True)),
                 color=alt.Color('IsBottleneck', scale=alt.Scale(domain=[True, False], range=['#FF4B4B', '#3498DB']), legend=None),
                 tooltip=['OPERATION', 'TIME', 'MACHINE']
-            ).properties(height=300) # Fixed height for cleanliness
+            ).properties(height=300) 
 
             st.altair_chart(c, use_container_width=True)
         
